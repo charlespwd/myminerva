@@ -37,26 +37,25 @@
                {:form-params {:sid user, :PIN pass}
                 :headers     {"Cookie" "TESTID=set"}}))
 
-(defn auth-cookies [user]
-  (:cookies (login user)))
+(defn auth-cookies 
+  "The auth-cookies are required to perform any action that requires
+  you to be logged into minerva." 
+  [user]
+  (cookies/encode-cookies (:cookies (login user))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Transcript bsns
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn request-transcript [user]
   (client/get (:transcript urls)
-              {:headers {"Cookie"
-                         (cookies/encode-cookies (auth-cookies user))}}))
+              {:headers {"Cookie" (auth-cookies user)}}))
 
-(defn get-transcript-page [user]
+(defn fetch-transcript-page [user]
   (:body (request-transcript user)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn str->html-resource [s]
-  (html/html-resource (java.io.StringReader. s)))
-
 (defn fetch-transcript [user]
-  (-> (get-transcript-page user)
+  (-> (fetch-transcript-page user)
       (str->html-resource)
       (html/select *transcript-table-selector*)))
 
@@ -76,9 +75,15 @@
 (defn not-course? [{course :course}]
   (nil? (re-find #"[A-Z]{4} \d+" course)))
 
-(defn get-transcript [user]
-    (->> (fetch-transcript user)
-         (map extract-transcript)
-         (remove not-course?)))
+(defn get-transcript 
+  "Obtain the data from the `user` transcript.
+   Returns a seq of course hashmaps or nil if login was unsuccessful"
+  [user]
+  (->> user 
+       (fetch-transcript)
+       (map extract-transcript)
+       (remove not-course?)
+       (seq)))
 
 (pprint (get-transcript *user*))
+(pprint (get-transcript {:username "bob" :password "bob"}))
