@@ -1,5 +1,6 @@
 (ns myminerva.util
-  (:require [net.cgrand.enlive-html :as html]))
+  (:require [net.cgrand.enlive-html :as html]
+            [clojure.string :as str]))
 
 (defn mapval [f hm]
   (zipmap (keys hm) (map f (vals hm))))
@@ -20,12 +21,9 @@
                 "s" 5
                 "f" 9))
 
-(defn season->month-str [s]
-  (format "%02d" (season->num s)))
-
 (defn fmt-year-season [year season]
-  (str year (season->month-str season)))
- 
+  (str year (format "%02d" (season->num season))))
+
 (defn fetch-nodes [http-res selector]
   (-> http-res http-res->html-resource (html/select selector)))
 

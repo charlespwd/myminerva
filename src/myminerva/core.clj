@@ -170,3 +170,51 @@
        (reduce course-reducer '())
        (map #(update-in % [:full?] (partial = "C")))
        (seq)))
+
+#_(pprint (get-courses *user* {:department "COMP" :season "winter" :year "2015"}))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Check the courses on registration page
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn registered-courses-form
+  [{season :season, year :year
+    :or {season "w" year 2015}}]
+  (str/join ["term_in=" (fmt-year-season year season)]))
+
+(defn request-registered-courses [user semester]
+  (client/post (:registered_courses urls)
+               {:headers {"Cookie" (auth-cookies user)
+                          "Content-Type" "application/x-www-form-urlencoded"}
+                :body (registered-courses-form semester)}))
+
+(defn fetch-registered-courses [user course]
+  (fetch-nodes (request-registered-courses user course)
+               *generic-table-rows-selector*))
+
+(defn extract-registered-course [node]
+  (let [columns (html/select [node] [:td])
+        status  (nth columns 0 "")
+        crn     (nth columns 2 "")
+        subj    (nth columns 3 "")
+        crse    (nth columns 4 "")
+        sec     (nth columns 5 "")
+        kind    (nth columns 6 "")
+        credits (nth columns 8 "")
+        title   (nth columns 10 "")
+        results (map html/text [status crn subj crse sec kind credits title])]
+    (zipmap [:status :crn :department :course-number :section :type :credits :course-title]
+            (map str/trim (map #(str/replace % "\n" " ") results)))))
+
+(defn not-registered-course? [{crn :crn}]
+  (not (re-match? #"\d+" crn)))
+
+(defn get-registered-courses
+  "Search for web-registered courses for a semester."
+  [user semester]
+  (->> (fetch-registered-courses user semester)
+       (map extract-registered-course)
+       (remove not-registered-course?)
+       (seq)))
+
+#_(pprint (get-registered-courses *user* {:season "winter" :year "2015"}))
