@@ -13,5 +13,21 @@
 (defn http-res->html-resource [res]
   (str->html-resource (:body res)))
 
+(defn season->num [[s]]
+  {:pre (re-match? #"[wWsSfF]" s)}
+  (condp = (str/lower-case s)
+                "w" 1
+                "s" 5
+                "f" 9))
+
+(defn season->month-str [s]
+  (format "%02d" (season->num s)))
+
+(defn fmt-year-season [year season]
+  (str year (season->month-str season)))
+ 
+(defn fetch-nodes [http-res selector]
+  (-> http-res http-res->html-resource (html/select selector)))
+
 (defn re-match? [re s]
   ((complement nil?) (re-find re s)))
