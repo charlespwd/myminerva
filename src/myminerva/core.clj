@@ -223,4 +223,4 @@
        (reduce add-drop-error-reducer '())))
 
 #_(pprint (add-drop-courses! *user* {:season "winter" :year "2015"
-                                     :crns "1724" :add? true}))
+                                     :crns "-1" :add? false}))

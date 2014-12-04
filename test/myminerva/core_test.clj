@@ -7,6 +7,9 @@
 (def ^:dynamic *invalid-course* {:department "invalid"})
 (def ^:dynamic *valid-course* {:department "MECH"})
 
+(defn- find-error [m]
+  (find m :error-message))
+
 (deftest a-test
   (testing "Login"
     (is (re-match? #"SESSID=[^;]" (auth-cookies *user*)))
@@ -19,6 +22,12 @@
     (is (nil? (get-registered-courses *user* {:season "winter" :year "2025"})))
     (is (nil? (get-registered-courses *invalid-user* {:season "winter" :year "2015"})))
     (is ((complement nil?) (get-registered-courses *user* {:season "winter" :year "2015"}))))
+  (testing "add-drop is working"
+    (is (empty? (filter find-error (add-drop-courses! *user* {:season "winter" :year "2015" :crns "3050" :add? true}))))
+    (is (empty? (filter find-error (add-drop-courses! *user* {:season "winter" :year "2015" :crns "3050" :add? false}))))
+    (is (empty? (filter find-error (add-drop-courses! *user* {:season "winter" :year "2015" :crns ["3050" "709"] :add? true}))))
+    (is (empty? (filter find-error (add-drop-courses! *user* {:season "winter" :year "2015" :crns ["3050" "709"] :add? false}))))
+    (is (not (empty? (filter find-error (add-drop-courses! *user* {:season "winter" :year "2015" :crns "6900" :add? true}))))))
   (testing "Testing you can get-transcript"
     (is (nil? (get-transcript {})))
     (is (nil? (get-transcript *invalid-user*))))
