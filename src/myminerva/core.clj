@@ -15,6 +15,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def ^:private table-rows-selector [:.pagebodydiv :table :tr])
+(def ^:private notes-re #"NOTES:\s*")
 (def ^:private base-url "https://horizon.mcgill.ca")
 (def ^:private base-path "/pban1")
 (def ^:private uri {:login               "/twbkwbis.P_ValLogin"
@@ -92,6 +93,9 @@
 (defn- fetch-courses [user course]
   (fetch-nodes (request-courses user course) table-rows-selector))
 
+(defn- notes? [s]
+  (re-match? notes-re s))
+
 (defn- extract-course [node]
   (let [columns (html/select [node] [:td])
         full?      (nth columns 0 "")
@@ -106,18 +110,25 @@
         instructor (nth columns 16 "")
         status     (nth columns 19 "")
         results (map html/text [full? crn dep c-n section kind title days
-                                time-slot instructor status]) ]
-    (zipmap [:full? :crn :department :course-number :section :type
+                                time-slot instructor status]) 
+        notes      (str/trim (html/text (nth columns 1 "")))]
+    (if (notes? notes) 
+      {:notes (str/replace notes notes-re "")}
+      (zipmap [:full? :crn :department :course-number :section :type
              :course-title :days :time-slot :instructor :status]
-            (map str/trim (map #(str/replace % "\n" " ") results)))))
+            (map str/trim (map #(str/replace % "\n" " ") results))))))
 
-(defn- not-course? [{d :days}]
-  (not (re-match? #"^[MTWRF]{1,3}$" d)))
+(defn- not-course? [{d :days, notes :notes, ts :time-slot}]
+  (and (nil? notes)
+       (not (re-match? #"TBA" ts))   
+       (not (re-match? #"TBA" d))   
+       (not (re-match? #"^[MTWRF]{1,3}$" d)))) 
 
 (defn- course-merger [a b]
   (cond (= a b) a
-        (re-match? #"^\W" a) b
-        (re-match? #"^\W" b) a
+        (and (string? a) (re-match? #"^\W" a)) b
+        (and (string? b) (re-match? #"^\W" b)) a
+        (vector? a) (conj a b)
         :else (vector a b)))
 
 (defn- course-reducer [[a :as lst] b]
@@ -125,7 +136,7 @@
   ; It checks whether a row's department matches 4 letters in all caps, if so
   ; append to the list the current element, if not, then merge the current
   ; element with the previous one.
-  (if (re-match? #"[A-Z]{4}" (:department b))
+  (if (re-match? #"[A-Z]{4}" (or (:department b) ""))
     (conj lst b)
     (conj (rest lst) (merge-with course-merger a b))))
 
@@ -139,7 +150,7 @@
        (map #(update-in % [:full?] (partial = "C")))
        (seq)))
 
-#_(pprint (get-courses *user* {:department "COMP" :season "winter" :year "2015"}))
+#_(pprint (get-courses *user* {:department "MECH" :season "winter" :year "2015"}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Check the courses on registration page

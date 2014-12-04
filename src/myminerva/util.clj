@@ -2,6 +2,9 @@
   (:require [net.cgrand.enlive-html :as html]
             [clojure.string :as str]))
 
+(defn filter-by [k v coll]
+  (filter #(= v (k %)) coll)) 
+
 (defn mapval [f hm]
   (zipmap (keys hm) (map f (vals hm))))
 
