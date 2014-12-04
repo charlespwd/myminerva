@@ -14,6 +14,9 @@
 (defn http-res->html-resource [res]
   (str->html-resource (:body res)))
 
+(defn re-match? [re s]
+  ((complement nil?) (re-find re s)))
+
 (defn season->num [[s]]
   {:pre (re-match? #"[wWsSfF]" s)}
   (condp = (str/lower-case s)
@@ -26,6 +29,3 @@
 
 (defn fetch-nodes [http-res selector]
   (-> http-res http-res->html-resource (html/select selector)))
-
-(defn re-match? [re s]
-  ((complement nil?) (re-find re s)))
