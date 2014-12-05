@@ -28,7 +28,6 @@
               (mapval (partial conj [base-url base-path]))
               (mapval str/join)))
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Login
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -110,9 +109,9 @@
         instructor (nth columns 16 "")
         status     (nth columns 19 "")
         results (map html/text [full? crn dep c-n section kind title days
-                                time-slot instructor status]) 
+                                time-slot instructor status])
         notes      (str/trim (html/text (nth columns 1 "")))]
-    (if (notes? notes) 
+    (if (notes? notes)
       {:notes (str/replace notes notes-re "")}
       (zipmap [:full? :crn :department :course-number :section :type
              :course-title :days :time-slot :instructor :status]
@@ -120,9 +119,9 @@
 
 (defn- not-course? [{d :days, notes :notes, ts :time-slot}]
   (and (nil? notes)
-       (not (re-match? #"TBA" ts))   
-       (not (re-match? #"TBA" d))   
-       (not (re-match? #"^[MTWRF]{1,3}$" d)))) 
+       (not (re-match? #"TBA" ts))
+       (not (re-match? #"TBA" d))
+       (not (re-match? #"^[MTWRF]{1,3}$" d))))
 
 (defn- course-merger [a b]
   (cond (= a b) a

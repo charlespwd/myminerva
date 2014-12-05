@@ -2,8 +2,26 @@
   (:use myminerva.util)
   (:require [clojure.string :as str]))
 
+;;; This is where the shit is at. It works. Don't touch it. I basically
+;;; reverse engineered minerva's post requests. It's freaky. Venture in
+;;; here at your own peril.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; registered-courses-form 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn registered-courses-form
+  [{season :season, year :year
+    :or {season "w" year 2015}}]
+  (str/join ["term_in=" (fmt-year-season year season)]))
+ 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; course selection.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; If you are looking at this. I'm sorry for you. Godspeed.
 (defn course-selection-form
-  ; wtf minerva...
+  ; wtf minerva... repeated keys? ...really?
   [{season :season, year :year, dep :department, course-number :course-number
     :or {season "w" year 2015 dep "COMP" course-number ""}}]
   (str/join ["term_in=" (fmt-year-season year season)
@@ -33,7 +51,11 @@
              "&end_hh=0"
              "&end_mi=0"
              "&end_ap=a"]))
- 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; add-drop-form
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defn add-drop-head
   [{season :season, year :year
     :or {season "w" year 2015}}]
@@ -53,11 +75,6 @@
              "&MESG=DUMMY"
              "&REG_BTN=DUMMY"
              "&MESG=DUMMY"]))
-
-(defn registered-courses-form
-  [{season :season, year :year
-    :or {season "w" year 2015}}]
-  (str/join ["term_in=" (fmt-year-season year season)]))
 
 (defn add-body [crn]
   (str/join ["&RSTS_IN=RW"
