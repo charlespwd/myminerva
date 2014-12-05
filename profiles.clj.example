@@ -1,0 +1,2 @@
+{:dev  {:env {:mg-user "username@mail.mcgill.ca" :mg-pass "pass"}}
+ :test {:env {:mg-user "username@mail.mcgill.ca" :mg-pass "pass"}}}
