@@ -7,4 +7,5 @@
                  [enlive "1.1.5"]
                  [clj-http "1.0.1"]
                  [environ "0.5.0"]]
-  :plugins [[lein-environ "1.0.0"]])
+  :plugins [[lein-environ "1.0.0"]
+            [codox "0.8.10"]])

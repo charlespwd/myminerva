@@ -7,8 +7,9 @@
             [environ.core :refer [env]]
             [net.cgrand.enlive-html :as html]))
 
-(def ^:dynamic *user* {:username (env :mg-user)
-                       :password (env :mg-pass)})
+(def ^{:dynamic true :private true}
+  *user* {:username (env :mg-user)
+          :password (env :mg-pass)})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Constants and stuff
@@ -24,7 +25,7 @@
                     :registered-courses  "/bwskfreg.P_AltPin"
                     :add-courses         "/bwckcoms.P_Regs"})
 
-(def url (->> uri
+(def ^:private url (->> uri
               (mapval (partial conj [base-url base-path]))
               (mapval str/join)))
 
