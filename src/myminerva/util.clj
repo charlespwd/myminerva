@@ -3,7 +3,7 @@
             [clojure.string :as str]))
 
 (defn filter-by [k v coll]
-  (filter #(= v (k %)) coll)) 
+  (filter #(= v (k %)) coll))
 
 (defn mapval [f hm]
   (zipmap (keys hm) (map f (vals hm))))
@@ -21,11 +21,11 @@
   ((complement nil?) (re-find re s)))
 
 (defn season->num [[s]]
-  {:pre (re-match? #"[wWsSfF]" s)}
   (condp = (str/lower-case s)
                 "w" 1
                 "s" 5
-                "f" 9))
+                "f" 9
+                :else -1))
 
 (defn fmt-year-season [year season]
   (str year (format "%02d" (season->num season))))

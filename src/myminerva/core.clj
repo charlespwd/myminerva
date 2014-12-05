@@ -39,7 +39,12 @@
 
 (defn auth-cookies
   "The auth-cookies are required to perform any action that requires
-  you to be logged into minerva."
+  you to be logged into minerva. The user must have the following keys:
+
+  :username - the full email of the user
+  :password - the password of the user
+
+  Returns a cookie string"
   [user]
   (cookies/encode-cookies (:cookies (login user))))
 
@@ -64,33 +69,53 @@
         grade     (nth columns 6 "")
         class-avg (nth columns 10 "")
         results (map html/text [rw course title section credits grade class-avg])]
-    (zipmap [:rw :course :course-title :section :credits :grade :class-avg]
+    (zipmap [:completed? :course :course-title :section :credits :grade :class-avg]
             (map #(str/replace % "\n" " ") results))))
 
 (defn- not-grade? [{course :course}]
   (not (re-match? #"[A-Z]{4} \d+" course)))
 
+(defn- wrap-course [{course :course :as m}]
+  (let [course-number (re-find #"\d+" course)
+        department    (re-find #"[A-Z]{1,5}\d*" course)]
+    (assoc (dissoc m :course) :course-number course-number :department department)))
+
 (defn get-transcript
-  "Obtain the data from the `user` transcript.
-  Returns a seq of course hashmaps or nil if login was unsuccessful"
+  "Obtain a seq of courses maps from the user's transcript.
+
+  Courses contain the following keys mapped to strings unless specified otherwise:
+
+  :class-avg     - the class average in letter form
+  :completed?    - boolean identifying if the course is completed or not
+  :course-number - the course number
+  :course-title  - the title of the course
+  :credits       - the number of credits of the course
+  :department    - the department identifier. e.g. 'MECH', 'COMP', ...
+  :grade         - the user's grade in letter form
+  :section       - the section number taken
+
+  Returns nil if the operation was unsuccessful."
   [user]
   (->> (fetch-transcript user)
        (map extract-grade)
        (remove not-grade?)
+       (map wrap-course)
        (seq)))
+
+#_(pprint (get-transcript *user*))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Search for course
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- request-courses [user course]
+(defn- request-courses [user options]
   (client/post (:search-courses url)
                {:headers {"Cookie" (auth-cookies user)
                           "Content-Type" "application/x-www-form-urlencoded"}
-                :body (course-selection-form course)}))
+                :body (course-selection-form options)}))
 
-(defn- fetch-courses [user course]
-  (fetch-nodes (request-courses user course) table-rows-selector))
+(defn- fetch-courses [user options]
+  (fetch-nodes (request-courses user options) table-rows-selector))
 
 (defn- notes? [s]
   (re-match? notes-re s))
@@ -140,9 +165,37 @@
     (conj (rest lst) (merge-with course-merger a b))))
 
 (defn get-courses
-  "Search for courses to determine availability, instructor, times, etc."
-  [user course]
-  (->> (fetch-courses user course)
+  "Search for courses to determine availability, instructor, times,
+  etc. The options take the following keys:
+
+  :season         - required, #\"winter|fall|summer\"
+  :year           - required, this one is pretty obvious
+  :department     - required, the department identifier. e.g. 'MECH'
+  :course-number  - optional, the course number
+
+  Returns a seq of courses with the following keys and values as
+  strings unless specified otherwise:
+
+  :course-number  - the course number
+  :course-title   - the title of the course
+  :credits        - the number of credits of the course
+  :crn            - the course identification number for add/drop purposes
+  :days           - a string or vector of strings matching #\"[MTWRF]\"
+  :department     - the department identifier. e.g. 'MECH', 'COMP', ...
+  :full?          - a boolean representing if the course is full or not
+  :grade          - the user's grade in letter form
+  :instructor     - the professor giving the course
+  :notes          - nil, string or vector of strings of comments on the course
+  :section        - the section number taken
+  :status         - is the course is active, cancelled, ... ?
+  :time-slot      - a string or vector of strings representing the times
+                    allocated for the course
+  :type           - a string such as lecture, tutorial, ...
+
+  Returns nil if the search was unsuccessful."
+  [user options]
+  {:pre [(every? (comp some? options) [:season :year :department])]}
+  (->> (fetch-courses user options)
        (map extract-course)
        (remove not-course?)
        (reduce course-reducer '())
@@ -201,14 +254,14 @@
 ;; Add/drop courses
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- request-add-drop [user params]
+(defn- request-add-drop [user options]
   (client/post (:add-courses url)
                {:headers {"Cookie" (auth-cookies user)
                           "Content-Type" "application/x-www-form-urlencoded"}
-                :body (add-drop-form params)}))
+                :body (add-drop-form options)}))
 
-(defn- fetch-add-drop [user params]
-  (fetch-nodes (request-add-drop user params)
+(defn- fetch-add-drop [user options]
+  (fetch-nodes (request-add-drop user options)
                table-rows-selector))
 
 (defn- add-drop-error-reducer [[a :as lst] m]
@@ -216,21 +269,47 @@
         (find m :error-message) (list m)
         :else (conj lst m)))
 
-(defn add-drop-courses!
-  "Add-drop courses, params is a hash-map with keys :season, :year,
-  :crns and :add?. If :add? is true, it adds the course to the list.
-  If :add? is false, it drops it.
+(defn- add-drop-courses!
+  [user options]
+  (->> (fetch-add-drop user options)
+       (map extract-registered-course)
+       (remove not-registered-course?)
+       (reduce add-drop-error-reducer '())))
+
+(defn add-courses!
+  "Register for courses for a given semester and year. The options must have
+  the following keys:
+
+  :crns   - a seq of or a single crn to add
+  :season - #\"winter|fall|summer\"
+  :year   - this one is pretty obvious
 
   Returns a seq of courses if the add/drop was successful or a seq of
   errors if any.
 
-  Errors are of the form {:error-message .* :crn .*} "
-  [user params]
-  {:pre [(some? (:add? params))]}
-  (->> (fetch-add-drop user params)
-       (map extract-registered-course)
-       (remove not-registered-course?)
-       (reduce add-drop-error-reducer '())))
+  Errors are of the form {:error-message .* :crn .*}"
+  [user options]
+  {:pre [(every? (comp some? options) [:season :year :crns])]}
+  (add-drop-courses! user (assoc options :add? true)))
+
+(defn drop-courses!
+  "Drop courses for a given semester and year. The options must have the
+  following keys:
+
+  :crns   - a seq of or a single crn to add
+  :season - #\"winter|fall|summer\"
+  :year   - this one is pretty obvious
+
+  Returns a seq of courses if the add/drop was successful or a seq of
+  errors if any.
+
+  Errors have the following keys
+
+  :error-message  - the identifier of the error as per minerva
+  :crn            - the crn attached to the error"
+  [user options]
+  {:pre [(every? (comp some? options) [:season :year :crns])]}
+  (add-drop-courses! user (assoc options :add? false)) )
 
 #_(pprint (add-drop-courses! *user* {:season "winter" :year "2015"
                                      :crns "-1" :add? false}))

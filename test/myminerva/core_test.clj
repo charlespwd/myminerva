@@ -5,7 +5,7 @@
 
 (def ^:dynamic *invalid-user* {:username "bob", :pass "bob"})
 (def ^:dynamic *invalid-course* {:department "invalid"})
-(def ^:dynamic *valid-course* {:department "MECH"})
+(def ^:dynamic *valid-course* {:department "MECH" :year "2015" :season "winter"})
 
 (defn- find-error [m]
   (find m :error-message))
@@ -15,20 +15,21 @@
     (is (re-match? #"SESSID=[^;]" (auth-cookies *user*)))
     (is (not (re-match? #"SESSID=[^;]" (auth-cookies *invalid-user*)))))
   (testing "Searching courses should return something on success, nil otherwise."
-    (is (nil? (get-courses *user* *invalid-course*)))
     (is (nil? (get-courses *invalid-user* *valid-course*)))
-    (is ((complement nil?) (get-courses *user* {:department "MECH"}))))
+    (is ((complement nil?) (get-courses *user* *valid-course*))))
   (testing "Getting the list of registered courses should return something on success or nil"
     (is (nil? (get-registered-courses *user* {:season "winter" :year "2025"})))
     (is (nil? (get-registered-courses *invalid-user* {:season "winter" :year "2015"})))
     (is ((complement nil?) (get-registered-courses *user* {:season "winter" :year "2015"}))))
   (testing "add-drop is working"
-    (is (empty? (filter find-error (add-drop-courses! *user* {:season "winter" :year "2015" :crns "3050" :add? true}))))
-    (is (empty? (filter find-error (add-drop-courses! *user* {:season "winter" :year "2015" :crns "3050" :add? false}))))
-    (is (empty? (filter find-error (add-drop-courses! *user* {:season "winter" :year "2015" :crns ["3050" "709"] :add? true}))))
-    (is (empty? (filter find-error (add-drop-courses! *user* {:season "winter" :year "2015" :crns ["3050" "709"] :add? false}))))
-    (is (not (empty? (filter find-error (add-drop-courses! *user* {:season "winter" :year "2015" :crns "6900" :add? true}))))))
+    (is (empty? (filter find-error (add-courses! *user* {:season "winter" :year "2015" :crns "3050"}))))
+    (is (empty? (filter find-error (drop-courses! *user* {:season "winter" :year "2015" :crns "3050"}))))
+    (is (empty? (filter find-error (add-courses! *user* {:season "winter" :year "2015" :crns ["3050" "709"]}))))
+    (is (empty? (filter find-error (drop-courses! *user* {:season "winter" :year "2015" :crns ["3050" "709"]}))))
+    (is (not (empty? (filter find-error (add-courses! *user* {:season "winter" :year "2015" :crns "6900"}))))))
   (testing "Testing you can get-transcript"
     (is (nil? (get-transcript {})))
     (is (nil? (get-transcript *invalid-user*))))
     (is ((complement nil?) (get-transcript *user*))))
+
+#_(a-test)

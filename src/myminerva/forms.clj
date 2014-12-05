@@ -7,14 +7,13 @@
 ;;; here at your own peril.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; registered-courses-form 
+;; registered-courses-form
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn registered-courses-form
-  [{season :season, year :year
-    :or {season "w" year 2015}}]
+  [{season :season, year :year}]
   (str/join ["term_in=" (fmt-year-season year season)]))
- 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; course selection.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -22,8 +21,7 @@
 ;; If you are looking at this. I'm sorry for you. Godspeed.
 (defn course-selection-form
   ; wtf minerva... repeated keys? ...really?
-  [{season :season, year :year, dep :department, course-number :course-number
-    :or {season "w" year 2015 dep "COMP" course-number ""}}]
+  [{season :season, year :year, dep :department, course-number :course-number}]
   (str/join ["term_in=" (fmt-year-season year season)
              "&sel_subj=dummy"
              "&sel_day=dummy"
@@ -57,8 +55,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn add-drop-head
-  [{season :season, year :year
-    :or {season "w" year 2015}}]
+  [{season :season, year :year}]
   (str/join ["term_in=" (fmt-year-season year season)
              "&RSTS_IN=DUMMY"
              "&assoc_term_in=DUMMY"
