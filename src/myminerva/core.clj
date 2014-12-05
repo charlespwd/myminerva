@@ -1,6 +1,7 @@
 (ns myminerva.core
-  (:use myminerva.util myminerva.forms)
+  (:use myminerva.util)
   (:require [clj-http.client :as client]
+            [myminerva.forms :as form]
             [clj-http.cookies :as cookies]
             [clojure.string :as str]
             [clojure.pprint :refer :all]
@@ -113,7 +114,7 @@
   (client/post (:search-courses url)
                {:headers {"Cookie" (auth-cookies user)
                           "Content-Type" "application/x-www-form-urlencoded"}
-                :body (course-selection-form options)}))
+                :body (form/course-selection-form options)}))
 
 (defn- fetch-courses [user options]
   (fetch-nodes (request-courses user options) table-rows-selector))
@@ -213,7 +214,7 @@
   (client/post (:registered-courses url)
                {:headers {"Cookie" (auth-cookies user)
                           "Content-Type" "application/x-www-form-urlencoded"}
-                :body (registered-courses-form options)}))
+                :body (form/registered-courses-form options)}))
 
 (defn- fetch-registered-courses [user course]
   (fetch-nodes (request-registered-courses user course)
@@ -259,7 +260,7 @@
   (client/post (:add-courses url)
                {:headers {"Cookie" (auth-cookies user)
                           "Content-Type" "application/x-www-form-urlencoded"}
-                :body (add-drop-form options)}))
+                :body (form/add-drop-form options)}))
 
 (defn- fetch-add-drop [user options]
   (fetch-nodes (request-add-drop user options)

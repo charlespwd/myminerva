@@ -54,7 +54,7 @@
 ;; add-drop-form
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn add-drop-head
+(defn- add-drop-head
   [{season :season, year :year}]
   (str/join ["term_in=" (fmt-year-season year season)
              "&RSTS_IN=DUMMY"
@@ -73,7 +73,7 @@
              "&REG_BTN=DUMMY"
              "&MESG=DUMMY"]))
 
-(defn add-body [crn]
+(defn- add-body [crn]
   (str/join ["&RSTS_IN=RW"
              "&CRN_IN=" crn
              "&assoc_term_in="
@@ -81,7 +81,7 @@
              "&end_date_in="
              "&regs_row=0"]))
 
-(defn drop-body [{year :year season :season} crn]
+(defn- drop-body [{year :year season :season} crn]
   (str/join ["&RSTS_IN=DW"
              "&assoc_term_in=" (fmt-year-season year season)
              "&CRN_IN=" crn
@@ -89,13 +89,14 @@
              "&end_date_in="
              "&regs_row=10"]))
 
-(defn add-drop-body
-  [{crns :crns add? :add? :as params}]
-  (->> (if (string? crns) (vector crns) crns) (map (cond add? add-body :else (partial drop-body params))) (into []) str/join))
+(defn- add-drop-body
+  [{crns :crns add? :add? :as options}]
+  (->> (if (string? crns) (vector crns) crns) (map (cond add? add-body :else (partial drop-body options))) (into []) str/join))
 
-(def add-drop-tail (str/join ["&wait_row=0"
-                              "&add_row=10"
-                              "&REG_BTN=Submit+Changes"]))
+(def ^:private add-drop-tail
+  (str/join ["&wait_row=0"
+             "&add_row=10"
+             "&REG_BTN=Submit+Changes"]))
 
-(defn add-drop-form [params] {:pre (re-match? #"\d+" (:crns params))}
-  (str/join [(add-drop-head params) (add-drop-body params) add-drop-tail]))
+(defn add-drop-form [options] {:pre (re-match? #"\d+" (:crns options))}
+  (str/join [(add-drop-head options) (add-drop-body options) add-drop-tail]))
