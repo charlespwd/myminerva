@@ -181,7 +181,7 @@
   :course-title   - the title of the course
   :credits        - the number of credits of the course
   :crn            - the course identification number for add/drop purposes
-  :days           - a string or vector of strings matching #\"[MTWRF]\"
+  :days           - a string or vector of strings matching #\"[MTWRF]\"+
   :department     - the department identifier. e.g. 'MECH', 'COMP', ...
   :full?          - a boolean representing if the course is full or not
   :grade          - the user's grade in letter form
@@ -209,11 +209,11 @@
 ;; Check the courses on registration page
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- request-registered-courses [user semester]
+(defn- request-registered-courses [user options]
   (client/post (:registered-courses url)
                {:headers {"Cookie" (auth-cookies user)
                           "Content-Type" "application/x-www-form-urlencoded"}
-                :body (registered-courses-form semester)}))
+                :body (registered-courses-form options)}))
 
 (defn- fetch-registered-courses [user course]
   (fetch-nodes (request-registered-courses user course)
@@ -243,8 +243,8 @@
 
 (defn get-registered-courses
   "Search for web-registered courses for a semester."
-  [user semester]
-  (->> (fetch-registered-courses user semester)
+  [user options]
+  (->> (fetch-registered-courses user options)
        (map extract-registered-course)
        (remove not-registered-course?)
        (seq)))
@@ -288,7 +288,10 @@
   Returns a seq of courses if the add/drop was successful or a seq of
   errors if any.
 
-  Errors are of the form {:error-message .* :crn .*}"
+  Errors have the following keys
+
+  :error-message  - the identifier of the error as per minerva
+  :crn            - the crn attached to the error"
   [user options]
   {:pre [(every? (comp some? options) [:season :year :crns])]}
   (add-drop-courses! user (assoc options :add? true)))
