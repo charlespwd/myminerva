@@ -120,12 +120,6 @@
   (get-transcript-from-cookies (auth-cookies user)))
 
 #_(pprint (get-transcript *user*))
-#_(pprint (get-transcript {:username "b" :password "f"}))
-#_(when-let [cookies (auth-cookies *user*)] ; wholy shit. I can do it with cookies only.
-    (pprint (first (get-transcript-from-cookies cookies)))
-    (pprint (first (get-courses cookies {:season "winter" :year 2015 :department "MECH"})))
-    (pprint (first (get-transcript-from-cookies cookies)))
-    (pprint (first (get-transcript-from-cookies cookies))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Search for course
@@ -340,7 +334,7 @@
   [user options] {:pre [(has-keys? [:season :year :crns] options)]}
   (add-courses-from-cookies! (auth-cookies user) options))
 
-(defn drop-courses-from-cookies
+(defn drop-courses-from-cookies!
   "An optimized version of drop-courses! which doesn't require logging
   in first. It only needs the session cookies from auth-cookies.
 
@@ -364,4 +358,4 @@
   :error-message  - the identifier of the error as per minerva
   :crn            - the crn attached to the error"
   [user options] {:pre [(has-keys? [:season :year :crns] options)]}
-  (drop-courses-from-cookies (auth-cookies user) options))
+  (drop-courses-from-cookies! (auth-cookies user) options))
