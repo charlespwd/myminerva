@@ -13,7 +13,7 @@
 (deftest a-test
   (testing "Login"
     (is (re-match? #"SESSID=[^;]" (auth-cookies *user*)))
-    (is (not (re-match? #"SESSID=[^;]" (auth-cookies *invalid-user*)))))
+    (is (nil? (auth-cookies *invalid-user*))))
   (testing "Searching courses should return something on success, nil otherwise."
     (is (nil? (get-courses *invalid-user* *valid-course*)))
     (is ((complement nil?) (get-courses *user* *valid-course*))))

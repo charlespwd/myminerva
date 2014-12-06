@@ -11,11 +11,17 @@
 (defn mapkeys [f hm]
   (zipmap (map f (keys hm)) (vals hm)))
 
+(defn has-keys? [ks m]
+  (every? (comp some? m) ks))
+
 (defn str->html-resource [s]
   (html/html-resource (java.io.StringReader. s)))
 
 (defn http-res->html-resource [res]
   (str->html-resource (:body res)))
+
+(defn http-res->html-node [http-res selector]
+  (-> http-res http-res->html-resource (html/select selector)))
 
 (defn re-match? [re s]
   ((complement nil?) (re-find re s)))
@@ -29,6 +35,3 @@
 
 (defn fmt-year-season [year season]
   (str year (format "%02d" (season->num season))))
-
-(defn fetch-nodes [http-res selector]
-  (-> http-res http-res->html-resource (html/select selector)))

@@ -27,11 +27,14 @@
                     :add-courses         "/bwckcoms.P_Regs"})
 
 (def ^:private url (->> uri
-              (mapval (partial conj [base-url base-path]))
-              (mapval str/join)))
+                        (mapval (partial conj [base-url base-path]))
+                        (mapval str/join)))
+
+(defn- http-res->table-rows [http-res]
+  (http-res->html-node http-res table-rows-selector))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Login
+;;; Login
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn- login [{user :username, pass :password}]
@@ -46,20 +49,20 @@
   :username - the full email of the user
   :password - the password of the user
 
-  Returns a cookie string"
+  Returns a cookie string, or nil if login was unsuccesful."
   [user]
-  (cookies/encode-cookies (:cookies (login user))))
+  (let [jar (cookies/encode-cookies (:cookies (login user)))]
+    (if (re-match? #"SESSID=.+;" jar) jar)))
+
+#_(auth-cookies *user*)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Transcript bsns
+;;; Transcript bsns
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- request-transcript [user]
+(defn- request-transcript [cookies]
   (client/get (:transcript url)
-              {:headers {"Cookie" (auth-cookies user)}}))
-
-(defn- fetch-transcript [user]
-  (fetch-nodes (request-transcript user) table-rows-selector))
+              {:headers {"Cookie" cookies}}))
 
 (defn- extract-grade [node]
   (let [columns (html/select [node] [:td])
@@ -82,6 +85,22 @@
         department    (re-find #"[A-Z]{1,5}\d*" course)]
     (assoc (dissoc m :course) :course-number course-number :department department)))
 
+(defn get-transcript-from-cookies
+  "An optimized version of get-transcript that doesn't require logging
+  in provided you already did in the past. Is only ever advantageous
+  if you try to do multiple transactions for a user. Works great in a
+  when-let for instance.
+
+  See get-transcript for details"
+  [cookies]
+  (->> cookies
+       (request-transcript)
+       (http-res->table-rows)
+       (map extract-grade)
+       (remove not-grade?)
+       (map wrap-course)
+       (seq)))
+
 (defn get-transcript
   "Obtain a seq of courses maps from the user's transcript.
 
@@ -98,26 +117,24 @@
 
   Returns nil if the operation was unsuccessful."
   [user]
-  (->> (fetch-transcript user)
-       (map extract-grade)
-       (remove not-grade?)
-       (map wrap-course)
-       (seq)))
+  (get-transcript-from-cookies (auth-cookies user)))
 
 #_(pprint (get-transcript *user*))
+#_(pprint (get-transcript {:username "b" :password "f"}))
+#_(when-let [cookies (auth-cookies *user*)] ; wholy shit. I can do it with cookies only.
+    (pprint (first (get-transcript-from-cookies cookies)))
+    (pprint (first (get-courses cookies {:season "winter" :year 2015 :department "MECH"})))
+    (pprint (first (get-transcript-from-cookies cookies)))
+    (pprint (first (get-transcript-from-cookies cookies))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Search for course
+;;; Search for course
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- request-courses [user options]
+(defn- request-courses [cookies options]
   (client/post (:search-courses url)
-               {:headers {"Cookie" (auth-cookies user)
-                          "Content-Type" "application/x-www-form-urlencoded"}
+               {:headers {"Cookie" cookies, "Content-Type" "application/x-www-form-urlencoded"}
                 :body (form/course-selection-form options)}))
-
-(defn- fetch-courses [user options]
-  (fetch-nodes (request-courses user options) table-rows-selector))
 
 (defn- notes? [s]
   (re-match? notes-re s))
@@ -141,8 +158,8 @@
     (if (notes? notes)
       {:notes (str/replace notes notes-re "")}
       (zipmap [:full? :crn :department :course-number :section :type
-             :course-title :days :time-slot :instructor :status]
-            (map str/trim (map #(str/replace % "\n" " ") results))))))
+               :course-title :days :time-slot :instructor :status]
+              (map str/trim (map #(str/replace % "\n" " ") results))))))
 
 (defn- not-course? [{d :days, notes :notes, ts :time-slot}]
   (and (nil? notes)
@@ -158,13 +175,27 @@
         :else (vector a b)))
 
 (defn- course-reducer [[a :as lst] b]
-  ; HACK: This is a hack to work with courses with availabilities in two rows.
-  ; It checks whether a row's department matches 4 letters in all caps, if so
-  ; append to the list the current element, if not, then merge the current
-  ; element with the previous one.
+  ;; HACK: This is a hack to work with courses with availabilities in
+  ;;       two rows. It checks whether a row's department matches 4 letters
+  ;;       in all caps, if so append to the list the current element, if not,
+  ;;       then merge the current element with the previous one.
   (if (re-match? #"[A-Z]{4}" (or (:department b) ""))
     (conj lst b)
     (conj (rest lst) (merge-with course-merger a b))))
+
+(defn get-courses-from-cookies
+  "An optimized version of get-courses which doesn't require logging
+  in first. It only needs the session cookies from auth-cookies.
+
+  See get-courses for details"
+  [cookies options] {:pre [(has-keys? [:season :year :department] options)]}
+  (->> (request-courses cookies options)
+       (http-res->table-rows)
+       (map extract-course)
+       (remove not-course?)
+       (reduce course-reducer '())
+       (map #(update-in % [:full?] (partial = "C")))
+       (seq)))
 
 (defn get-courses
   "Search for courses to determine availability, instructor, times,
@@ -191,34 +222,23 @@
   :section        - the section number taken
   :status         - is the course is active, cancelled, ... ?
   :time-slot      - a string or vector of strings representing the times
-                    allocated for the course
+  allocated for the course
   :type           - a string such as lecture, tutorial, ...
 
   Returns nil if the search was unsuccessful."
-  [user options]
-  {:pre [(every? (comp some? options) [:season :year :department])]}
-  (->> (fetch-courses user options)
-       (map extract-course)
-       (remove not-course?)
-       (reduce course-reducer '())
-       (map #(update-in % [:full?] (partial = "C")))
-       (seq)))
+  [user options] {:pre [(has-keys? [:season :year :department] options)]}
+  (get-courses-from-cookies (auth-cookies user) options))
 
-#_(pprint (get-courses *user* {:department "MECH" :season "winter" :year "2015"}))
+#_(pprint (get-courses (auth-cookies *user*) {:department "MECH" :season "winter" :year "2015"}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Check the courses on registration page
+;;; Check the courses on registration page
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- request-registered-courses [user options]
+(defn- request-registered-courses [cookies options]
   (client/post (:registered-courses url)
-               {:headers {"Cookie" (auth-cookies user)
-                          "Content-Type" "application/x-www-form-urlencoded"}
+               {:headers {"Cookie" cookies, "Content-Type" "application/x-www-form-urlencoded"}
                 :body (form/registered-courses-form options)}))
-
-(defn- fetch-registered-courses [user course]
-  (fetch-nodes (request-registered-courses user course)
-               table-rows-selector))
 
 (defn- extract-registered-course [node]
   (let [columns (html/select [node] [:td])
@@ -242,6 +262,18 @@
 (defn- not-registered-course? [{crn :crn :or {crn ""}}]
   (not (re-match? #"^\d+" crn)))
 
+(defn get-registered-courses-from-cookies
+  "An optimized version of get-registered-courses which doesn't require logging
+  in first. It only needs the session cookies from auth-cookies.
+
+  See get-registered-courses for details"
+  [cookies options] {:pre [(has-keys? [:season :year] options)]}
+  (->> (request-registered-courses cookies options)
+       (http-res->table-rows)
+       (map extract-registered-course)
+       (remove not-registered-course?)
+       (seq)))
+
 (defn get-registered-courses
   "Search for web-registered courses for a semester. Returns a seq of
   courses with the following keys:
@@ -253,40 +285,42 @@
   :department     - the department identifier. e.g. 'MECH', 'COMP', ...
   :section        - the section number taken
   :status         - is the course is active, cancelled, ... ?
-  :type           - a string such as lecture, tutorial, ..."
-  [user options]
-  (->> (fetch-registered-courses user options)
-       (map extract-registered-course)
-       (remove not-registered-course?)
-       (seq)))
+  :type           - a string such as lecture, tutorial, ...
+
+  Returns nil if unsuccessful."
+  [user options] {:pre [(has-keys? [:season :year] options)]}
+  (get-registered-courses-from-cookies (auth-cookies user) options))
 
 #_(pprint (get-registered-courses *user* {:season "winter" :year "2015"}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Add/drop courses
+;;; Add/drop courses
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- request-add-drop [user options]
+(defn- request-add-drop [cookies options]
   (client/post (:add-courses url)
-               {:headers {"Cookie" (auth-cookies user)
-                          "Content-Type" "application/x-www-form-urlencoded"}
+               {:headers {"Cookie" cookies, "Content-Type" "application/x-www-form-urlencoded"}
                 :body (form/add-drop-form options)}))
-
-(defn- fetch-add-drop [user options]
-  (fetch-nodes (request-add-drop user options)
-               table-rows-selector))
 
 (defn- add-drop-error-reducer [[a :as lst] m]
   (cond (find a :error-message) (list a)
         (find m :error-message) (list m)
         :else (conj lst m)))
 
-(defn- add-drop-courses!
-  [user options]
-  (->> (fetch-add-drop user options)
+(defn- add-drop-courses! [cookies options]
+  (->> (request-add-drop cookies options)
+       (http-res->table-rows)
        (map extract-registered-course)
        (remove not-registered-course?)
        (reduce add-drop-error-reducer '())))
+
+(defn add-courses-from-cookies!
+  "An optimized version of add-courses! which doesn't require logging
+  in first. It only needs the session cookies from auth-cookies.
+
+  See add-courses! for details"
+  [cookies options] {:pre [(has-keys? [:season :year :crns] options)]}
+  (add-drop-courses! cookies (assoc options :add? true)))
 
 (defn add-courses!
   "Register for courses for a given semester and year. The options must have
@@ -303,9 +337,16 @@
 
   :error-message  - the identifier of the error as per minerva
   :crn            - the crn attached to the error"
-  [user options]
-  {:pre [(every? (comp some? options) [:season :year :crns])]}
-  (add-drop-courses! user (assoc options :add? true)))
+  [user options] {:pre [(has-keys? [:season :year :crns] options)]}
+  (add-courses-from-cookies! (auth-cookies user) options))
+
+(defn drop-courses-from-cookies
+  "An optimized version of drop-courses! which doesn't require logging
+  in first. It only needs the session cookies from auth-cookies.
+
+  See drop-courses! for details"
+  [cookies options] {:pre [(has-keys? [:season :year :crns] options)]}
+  (add-drop-courses! cookies (assoc options :add? false)))
 
 (defn drop-courses!
   "Drop courses for a given semester and year. The options must have the
@@ -322,9 +363,5 @@
 
   :error-message  - the identifier of the error as per minerva
   :crn            - the crn attached to the error"
-  [user options]
-  {:pre [(every? (comp some? options) [:season :year :crns])]}
-  (add-drop-courses! user (assoc options :add? false)) )
-
-#_(pprint (add-drop-courses! *user* {:season "winter" :year "2015"
-                                     :crns "-1" :add? false}))
+  [user options] {:pre [(has-keys? [:season :year :crns] options)]}
+  (drop-courses-from-cookies (auth-cookies user) options))
