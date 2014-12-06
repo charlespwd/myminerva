@@ -243,7 +243,17 @@
   (not (re-match? #"^\d+" crn)))
 
 (defn get-registered-courses
-  "Search for web-registered courses for a semester."
+  "Search for web-registered courses for a semester. Returns a seq of
+  courses with the following keys:
+
+  :course-number  - the course number
+  :course-title   - the title of the course
+  :credits        - the number of credits of the course
+  :crn            - the course identification number for add/drop purposes
+  :department     - the department identifier. e.g. 'MECH', 'COMP', ...
+  :section        - the section number taken
+  :status         - is the course is active, cancelled, ... ?
+  :type           - a string such as lecture, tutorial, ..."
   [user options]
   (->> (fetch-registered-courses user options)
        (map extract-registered-course)
