@@ -1,9 +1,12 @@
 (ns myminerva.core-test
   (:require [clojure.test :refer :all]
+            [environ.core :refer [env]]
             [myminerva.core :refer :all]
             [myminerva.util :refer :all]))
 
-(def ^:dynamic *invalid-user* {:username "bob", :pass "bob"})
+
+(def ^:dynamic *user*         (-> User (env :mg-user) (env :mg-pass)))
+(def ^:dynamic *invalid-user* (-> User "bob" "invalidpass"))
 (def ^:dynamic *invalid-course* {:department "invalid"})
 (def ^:dynamic *valid-course* {:department "MECH" :year "2015" :season "winter"})
 

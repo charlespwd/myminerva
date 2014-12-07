@@ -8,9 +8,10 @@
             [environ.core :refer [env]]
             [net.cgrand.enlive-html :as html]))
 
+(defrecord User [username password])
+
 (def ^{:dynamic true :private true}
-  *user* {:username (env :mg-user)
-          :password (env :mg-pass)})
+  *user* (->User (env :mg-user) (env :mg-pass) ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Constants and stuff
@@ -54,15 +55,30 @@
   (let [jar (cookies/encode-cookies (:cookies (login user)))]
     (if (re-match? #"SESSID=.+;" jar) jar)))
 
-#_(auth-cookies *user*)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Authorized protocol
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defprotocol Authorized
+  (to-auth-cookies [this] "Returns cookie string of given input"))
+
+(extend-protocol Authorized 
+  User 
+  (to-auth-cookies [user] (auth-cookies user))
+  java.util.Map
+  (to-auth-cookies [user] (auth-cookies user))
+  String
+  (to-auth-cookies [s] s) ; assuming cookie string
+  nil
+  (to-auth-cookies [_] nil))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Transcript bsns
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- request-transcript [cookies]
+(defn- request-transcript [auth]
   (client/get (:transcript url)
-              {:headers {"Cookie" cookies}}))
+              {:headers {"Cookie" (to-auth-cookies auth)}}))
 
 (defn- extract-grade [node]
   (let [columns (html/select [node] [:td])
@@ -85,22 +101,6 @@
         department    (re-find #"[A-Z]{1,5}\d*" course)]
     (assoc (dissoc m :course) :course-number course-number :department department)))
 
-(defn get-transcript-from-cookies
-  "An optimized version of get-transcript that doesn't require logging
-  in provided you already did in the past. Is only ever advantageous
-  if you try to do multiple transactions for a user. Works great in a
-  when-let for instance.
-
-  See get-transcript for details"
-  [cookies]
-  (->> cookies
-       (request-transcript)
-       (http-res->table-rows)
-       (map extract-grade)
-       (remove not-grade?)
-       (map wrap-course)
-       (seq)))
-
 (defn get-transcript
   "Obtain a seq of courses maps from the user's transcript.
 
@@ -116,8 +116,13 @@
   :section       - the section number taken
 
   Returns nil if the operation was unsuccessful."
-  [user]
-  (get-transcript-from-cookies (auth-cookies user)))
+  [auth]
+  (->> (request-transcript auth)
+       (http-res->table-rows)
+       (map extract-grade)
+       (remove not-grade?)
+       (map wrap-course)
+       (seq))) 
 
 #_(pprint (get-transcript *user*))
 
@@ -125,9 +130,9 @@
 ;;; Search for course
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- request-courses [cookies options]
+(defn- request-courses [auth options]
   (client/post (:search-courses url)
-               {:headers {"Cookie" cookies, "Content-Type" "application/x-www-form-urlencoded"}
+               {:headers {"Cookie" (to-auth-cookies auth), "Content-Type" "application/x-www-form-urlencoded"}
                 :body (form/course-selection-form options)}))
 
 (defn- notes? [s]
@@ -177,20 +182,6 @@
     (conj lst b)
     (conj (rest lst) (merge-with course-merger a b))))
 
-(defn get-courses-from-cookies
-  "An optimized version of get-courses which doesn't require logging
-  in first. It only needs the session cookies from auth-cookies.
-
-  See get-courses for details"
-  [cookies options] {:pre [(has-keys? [:season :year :department] options)]}
-  (->> (request-courses cookies options)
-       (http-res->table-rows)
-       (map extract-course)
-       (remove not-course?)
-       (reduce course-reducer '())
-       (map #(update-in % [:full?] (partial = "C")))
-       (seq)))
-
 (defn get-courses
   "Search for courses to determine availability, instructor, times,
   etc. The options take the following keys:
@@ -220,8 +211,14 @@
   :type           - a string such as lecture, tutorial, ...
 
   Returns nil if the search was unsuccessful."
-  [user options] {:pre [(has-keys? [:season :year :department] options)]}
-  (get-courses-from-cookies (auth-cookies user) options))
+  [auth options] {:pre [(has-keys? [:season :year :department] options)]}
+  (->> (request-courses auth options)
+       (http-res->table-rows)
+       (map extract-course)
+       (remove not-course?)
+       (reduce course-reducer '())
+       (map #(update-in % [:full?] (partial = "C")))
+       (seq))) 
 
 #_(pprint (get-courses (auth-cookies *user*) {:department "MECH" :season "winter" :year "2015"}))
 
@@ -229,9 +226,9 @@
 ;;; Check the courses on registration page
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- request-registered-courses [cookies options]
+(defn- request-registered-courses [auth options]
   (client/post (:registered-courses url)
-               {:headers {"Cookie" cookies, "Content-Type" "application/x-www-form-urlencoded"}
+               {:headers {"Cookie" (to-auth-cookies auth), "Content-Type" "application/x-www-form-urlencoded"}
                 :body (form/registered-courses-form options)}))
 
 (defn- extract-registered-course [node]
@@ -256,18 +253,6 @@
 (defn- not-registered-course? [{crn :crn :or {crn ""}}]
   (not (re-match? #"^\d+" crn)))
 
-(defn get-registered-courses-from-cookies
-  "An optimized version of get-registered-courses which doesn't require logging
-  in first. It only needs the session cookies from auth-cookies.
-
-  See get-registered-courses for details"
-  [cookies options] {:pre [(has-keys? [:season :year] options)]}
-  (->> (request-registered-courses cookies options)
-       (http-res->table-rows)
-       (map extract-registered-course)
-       (remove not-registered-course?)
-       (seq)))
-
 (defn get-registered-courses
   "Search for web-registered courses for a semester. Returns a seq of
   courses with the following keys:
@@ -282,8 +267,12 @@
   :type           - a string such as lecture, tutorial, ...
 
   Returns nil if unsuccessful."
-  [user options] {:pre [(has-keys? [:season :year] options)]}
-  (get-registered-courses-from-cookies (auth-cookies user) options))
+  [auth options] {:pre [(has-keys? [:season :year] options)]}
+  (->> (request-registered-courses auth options)
+       (http-res->table-rows)
+       (map extract-registered-course)
+       (remove not-registered-course?)
+       (seq)))
 
 #_(pprint (get-registered-courses *user* {:season "winter" :year "2015"}))
 
@@ -291,9 +280,9 @@
 ;;; Add/drop courses
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- request-add-drop [cookies options]
+(defn- request-add-drop [auth options]
   (client/post (:add-courses url)
-               {:headers {"Cookie" cookies, "Content-Type" "application/x-www-form-urlencoded"}
+               {:headers {"Cookie" (to-auth-cookies auth), "Content-Type" "application/x-www-form-urlencoded"}
                 :body (form/add-drop-form options)}))
 
 (defn- add-drop-error-reducer [[a :as lst] m]
@@ -301,20 +290,12 @@
         (find m :error-message) (list m)
         :else (conj lst m)))
 
-(defn- add-drop-courses! [cookies options]
-  (->> (request-add-drop cookies options)
+(defn- add-drop-courses! [auth options]
+  (->> (request-add-drop auth options)
        (http-res->table-rows)
        (map extract-registered-course)
        (remove not-registered-course?)
        (reduce add-drop-error-reducer '())))
-
-(defn add-courses-from-cookies!
-  "An optimized version of add-courses! which doesn't require logging
-  in first. It only needs the session cookies from auth-cookies.
-
-  See add-courses! for details"
-  [cookies options] {:pre [(has-keys? [:season :year :crns] options)]}
-  (add-drop-courses! cookies (assoc options :add? true)))
 
 (defn add-courses!
   "Register for courses for a given semester and year. The options must have
@@ -331,16 +312,8 @@
 
   :error-message  - the identifier of the error as per minerva
   :crn            - the crn attached to the error"
-  [user options] {:pre [(has-keys? [:season :year :crns] options)]}
-  (add-courses-from-cookies! (auth-cookies user) options))
-
-(defn drop-courses-from-cookies!
-  "An optimized version of drop-courses! which doesn't require logging
-  in first. It only needs the session cookies from auth-cookies.
-
-  See drop-courses! for details"
-  [cookies options] {:pre [(has-keys? [:season :year :crns] options)]}
-  (add-drop-courses! cookies (assoc options :add? false)))
+  [auth options] {:pre [(has-keys? [:season :year :crns] options)]}
+  (add-drop-courses! auth (assoc options :add? true))) 
 
 (defn drop-courses!
   "Drop courses for a given semester and year. The options must have the
@@ -357,5 +330,5 @@
 
   :error-message  - the identifier of the error as per minerva
   :crn            - the crn attached to the error"
-  [user options] {:pre [(has-keys? [:season :year :crns] options)]}
-  (drop-courses-from-cookies! (auth-cookies user) options))
+  [auth options] {:pre [(has-keys? [:season :year :crns] options)]}
+  (add-drop-courses! auth (assoc options :add? false))) 

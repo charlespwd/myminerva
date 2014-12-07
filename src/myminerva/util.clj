@@ -5,11 +5,11 @@
 (defn filter-by [k v coll]
   (filter #(= v (k %)) coll))
 
-(defn mapval [f hm]
-  (zipmap (keys hm) (map f (vals hm))))
+(defn mapval [f m]
+  (zipmap (keys m) (map f (vals m))))
 
-(defn mapkeys [f hm]
-  (zipmap (map f (keys hm)) (vals hm)))
+(defn mapkeys [f m]
+  (zipmap (map f (keys m)) (vals m)))
 
 (defn has-keys? [ks m]
   (every? (comp some? m) ks))

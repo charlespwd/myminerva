@@ -20,7 +20,7 @@
 
 ;; If you are looking at this. I'm sorry for you. Godspeed.
 (defn course-selection-form
-  ; wtf minerva... repeated keys? ...really?
+  ;; wtf minerva... repeated keys? ...really?
   [{season :season, year :year, dep :department, course-number :course-number}]
   (str/join ["term_in=" (fmt-year-season year season)
              "&sel_subj=dummy"
