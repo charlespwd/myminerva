@@ -19,8 +19,7 @@
 
 (def ^:private table-rows-selector [:.pagebodydiv :table :tr])
 (def ^:private notes-re #"NOTES:\s*")
-(def ^:private base-url "https://horizon.mcgill.ca")
-(def ^:private base-path "/pban1")
+(def ^:private base-url "https://horizon.mcgill.ca/pban1")
 (def ^:private uri {:login               "/twbkwbis.P_ValLogin"
                     :transcript          "/bzsktran.P_Display_Form?user_type=S&tran_type=V"
                     :search-courses      "/bwskfcls.P_GetCrse"
@@ -28,11 +27,11 @@
                     :add-courses         "/bwckcoms.P_Regs"})
 
 (def ^:private url (->> uri
-                        (mapval (partial conj [base-url base-path]))
+                        (mapval (partial conj [base-url]))
                         (mapval str/join)))
 
 (defn- http-res->table-rows [http-res]
-  (http-res->html-node http-res table-rows-selector))
+  (-> http-res (http-res->html-node table-rows-selector)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Login
@@ -43,8 +42,8 @@
                {:form-params {:sid user, :PIN pass}
                 :headers     {"Cookie" "TESTID=set"}}))
 
-(defn auth-cookies
-  "The auth-cookies are required to perform any action that requires
+(defn user->cookies
+  "The authorized cookies are required to perform any action that requires
   you to be logged into minerva. The user must have the following keys:
 
   :username - the full email of the user
@@ -60,17 +59,17 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defprotocol Authorized
-  (to-auth-cookies [this] "Returns cookie string of given input"))
+  (auth->cookies [this] "Returns cookie string of given input"))
 
-(extend-protocol Authorized 
-  User 
-  (to-auth-cookies [user] (auth-cookies user))
+(extend-protocol Authorized
+  User
+  (auth->cookies [user] (-> user user->cookies))
   java.util.Map
-  (to-auth-cookies [user] (auth-cookies user))
+  (auth->cookies [user] (-> user user->cookies))
   String
-  (to-auth-cookies [s] s) ; assuming cookie string
+  (auth->cookies [s] s) ; assuming cookie string
   nil
-  (to-auth-cookies [_] nil))
+  (auth->cookies [_] nil))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Transcript bsns
@@ -78,7 +77,7 @@
 
 (defn- request-transcript [auth]
   (client/get (:transcript url)
-              {:headers {"Cookie" (to-auth-cookies auth)}}))
+              {:headers {"Cookie" (-> auth auth->cookies)}}))
 
 (defn- extract-grade [node]
   (let [columns (html/select [node] [:td])
@@ -122,7 +121,7 @@
        (map extract-grade)
        (remove not-grade?)
        (map wrap-course)
-       (seq))) 
+       (seq)))
 
 #_(pprint (get-transcript *user*))
 
@@ -132,7 +131,7 @@
 
 (defn- request-courses [auth options]
   (client/post (:search-courses url)
-               {:headers {"Cookie" (to-auth-cookies auth), "Content-Type" "application/x-www-form-urlencoded"}
+               {:headers {"Cookie" (-> auth auth->cookies), "Content-Type" "application/x-www-form-urlencoded"}
                 :body (form/course-selection-form options)}))
 
 (defn- notes? [s]
@@ -160,25 +159,27 @@
                :course-title :days :time-slot :instructor :status]
               (map str/trim (map #(str/replace % "\n" " ") results))))))
 
-(defn- not-course? [{d :days, notes :notes, ts :time-slot}]
+(defn- not-valid? [{d :days, notes :notes, ts :time-slot}]
   (and (nil? notes)
        (not (re-match? #"TBA" ts))
        (not (re-match? #"TBA" d))
        (not (re-match? #"^[MTWRF]{1,3}$" d))))
 
+(defn- weird-blank-character? [s] 
+  (and (string? s) (re-match? #"^\W" s)))
+
 (defn- course-merger [a b]
   (cond (= a b) a
-        (and (string? a) (re-match? #"^\W" a)) b
-        (and (string? b) (re-match? #"^\W" b)) a
+        (weird-blank-character? a) b
+        (weird-blank-character? b) a
         (vector? a) (conj a b)
         :else (vector a b)))
 
+(defn- course? [{dep :department :or {dep ""}}]
+  (re-match? #"[A-Z]{4}" dep))
+ 
 (defn- course-reducer [[a :as lst] b]
-  ;; HACK: This is a hack to work with courses with availabilities in
-  ;;       two rows. It checks whether a row's department matches 4 letters
-  ;;       in all caps, if so append to the list the current element, if not,
-  ;;       then merge the current element with the previous one.
-  (if (re-match? #"[A-Z]{4}" (or (:department b) ""))
+  (if (course? b) 
     (conj lst b)
     (conj (rest lst) (merge-with course-merger a b))))
 
@@ -207,7 +208,7 @@
   :section        - the section number taken
   :status         - is the course is active, cancelled, ... ?
   :time-slot      - a string or vector of strings representing the times
-  allocated for the course
+                    allocated for the course
   :type           - a string such as lecture, tutorial, ...
 
   Returns nil if the search was unsuccessful."
@@ -215,12 +216,12 @@
   (->> (request-courses auth options)
        (http-res->table-rows)
        (map extract-course)
-       (remove not-course?)
+       (remove not-valid?)
        (reduce course-reducer '())
        (map #(update-in % [:full?] (partial = "C")))
-       (seq))) 
+       (seq)))
 
-#_(pprint (get-courses (auth-cookies *user*) {:department "MECH" :season "winter" :year "2015"}))
+#_(pprint (get-courses *user* {:department "MECH" :season "winter" :year "2015"}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Check the courses on registration page
@@ -228,7 +229,7 @@
 
 (defn- request-registered-courses [auth options]
   (client/post (:registered-courses url)
-               {:headers {"Cookie" (to-auth-cookies auth), "Content-Type" "application/x-www-form-urlencoded"}
+               {:headers {"Cookie" (-> auth auth->cookies), "Content-Type" "application/x-www-form-urlencoded"}
                 :body (form/registered-courses-form options)}))
 
 (defn- extract-registered-course [node]
@@ -282,7 +283,7 @@
 
 (defn- request-add-drop [auth options]
   (client/post (:add-courses url)
-               {:headers {"Cookie" (to-auth-cookies auth), "Content-Type" "application/x-www-form-urlencoded"}
+               {:headers {"Cookie" (-> auth auth->cookies), "Content-Type" "application/x-www-form-urlencoded"}
                 :body (form/add-drop-form options)}))
 
 (defn- add-drop-error-reducer [[a :as lst] m]
@@ -313,7 +314,7 @@
   :error-message  - the identifier of the error as per minerva
   :crn            - the crn attached to the error"
   [auth options] {:pre [(has-keys? [:season :year :crns] options)]}
-  (add-drop-courses! auth (assoc options :add? true))) 
+  (add-drop-courses! auth (assoc options :add? true)))
 
 (defn drop-courses!
   "Drop courses for a given semester and year. The options must have the
@@ -331,4 +332,4 @@
   :error-message  - the identifier of the error as per minerva
   :crn            - the crn attached to the error"
   [auth options] {:pre [(has-keys? [:season :year :crns] options)]}
-  (add-drop-courses! auth (assoc options :add? false))) 
+  (add-drop-courses! auth (assoc options :add? false)))
