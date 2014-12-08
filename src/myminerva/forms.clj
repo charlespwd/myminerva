@@ -1,4 +1,4 @@
-(ns myminerva.forms
+(ns ^:no-doc myminerva.forms
   (:use myminerva.util)
   (:require [clojure.string :as str]))
 

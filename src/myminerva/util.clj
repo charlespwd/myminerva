@@ -1,4 +1,4 @@
-(ns myminerva.util
+(ns ^:no-doc myminerva.util
   (:require [net.cgrand.enlive-html :as html]
             [clojure.string :as str]))
 
