@@ -81,14 +81,14 @@
 
 (defn- extract-grade [node]
   (let [columns (html/select [node] [:td])
-        rw        (nth columns 0 "")
-        course    (nth columns 1 "")
-        section   (nth columns 2 "")
-        title     (nth columns 3 "")
-        credits   (nth columns 4 "")
-        grade     (nth columns 6 "")
-        class-avg (nth columns 10 "")
-        results (map html/text [rw course title section credits grade class-avg])]
+        completed? (nth columns 0 "")
+        course     (nth columns 1 "")
+        section    (nth columns 2 "")
+        title      (nth columns 3 "")
+        credits    (nth columns 4 "")
+        grade      (nth columns 6 "")
+        class-avg  (nth columns 10 "")
+        results (map html/text [completed? course title section credits grade class-avg])]
     (zipmap [:completed? :course :course-title :section :credits :grade :class-avg]
             (map #(str/replace % "\n" " ") results))))
 
@@ -99,6 +99,9 @@
   (let [course-number (re-find #"\d+" course)
         department    (re-find #"[A-Z]{1,5}\d*" course)]
     (assoc (dissoc m :course) :course-number course-number :department department)))
+
+(defn- wrap-completed [{completed? :completed? :as m}]
+  (assoc m :completed? (not (re-match? #"^RW" completed?))))
 
 (defn get-transcript
   "Obtain a seq of courses maps from the user's transcript.
@@ -121,6 +124,7 @@
        (map extract-grade)
        (remove not-grade?)
        (map wrap-course)
+       (map wrap-completed)
        (seq)))
 
 #_(pprint (get-transcript *user*))
